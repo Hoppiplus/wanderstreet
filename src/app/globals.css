@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #0f0f14;
+  color: #e8e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+#__next,
+main {
+  height: 100%;
+}
+
+/* Hide Google Maps default UI chrome we don't want */
+.gm-bundled-control-on-bottom,
+.gm-svpc {
+  opacity: 0.7 !important;
+}
+
+/* Autocomplete dropdown dark theme */
+.pac-container {
+  background: #1e1e2a;
+  border: 1px solid #2a2a3a;
+  border-radius: 0.5rem;
+  margin-top: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.pac-item {
+  padding: 8px 12px;
+  color: #8888a8;
+  border-top: 1px solid #2a2a3a;
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.pac-item:hover,
+.pac-item-selected {
+  background: #2a2a3a;
+  color: #e8e8f0;
+}
+
+.pac-item-query {
+  color: #e8e8f0;
+  font-size: 0.875rem;
+}
+
+.pac-matched {
+  color: #6c63ff;
+  font-weight: 600;
+}
+
+.pac-icon {
+  display: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a3a;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a50;
+}
+
+/* Range input */
+input[type='range'] {
+  cursor: pointer;
+}
+
+/* Waving bars animation for sound viz */
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
+}
