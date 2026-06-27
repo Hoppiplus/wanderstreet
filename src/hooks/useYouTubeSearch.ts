@@ -6,6 +6,7 @@ import type { VideoResult, PovType, TimeOfDay } from '@/lib/types';
 interface SearchOptions {
   lat: number;
   lng: number;
+  label?: string; // reverse-geocoded place name — used to build a tight search query
   radiusMeters: number;
   pov: PovType;
   time: TimeOfDay;
@@ -34,6 +35,7 @@ export function useYouTubeSearch(): UseYouTubeSearchReturn {
       radius: String(opts.radiusMeters),
       pov: opts.pov,
       time: opts.time,
+      ...(opts.label ? { label: opts.label } : {}),
     });
 
     try {

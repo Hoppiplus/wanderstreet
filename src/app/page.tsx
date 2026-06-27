@@ -34,7 +34,7 @@ export default function Home() {
       const state: SearchState = { lat, lng, label, radiusMeters: radius };
       setSearchState(state);
       setPanelOpen(true);
-      search({ lat, lng, radiusMeters: radius, pov, time });
+      search({ lat, lng, label, radiusMeters: radius, pov, time });
     },
     [radius, pov, time, search]
   );
@@ -45,20 +45,20 @@ export default function Home() {
     setPov(v);
     if (searchState) {
       prevFiltersRef.current = { pov: v, time, radius };
-      search({ lat: searchState.lat, lng: searchState.lng, radiusMeters: radius, pov: v, time });
+      search({ lat: searchState.lat, lng: searchState.lng, label: searchState.label, radiusMeters: radius, pov: v, time });
     }
   };
   const handleTimeChange = (v: TimeOfDay) => {
     setTime(v);
     if (searchState) {
-      search({ lat: searchState.lat, lng: searchState.lng, radiusMeters: radius, pov, time: v });
+      search({ lat: searchState.lat, lng: searchState.lng, label: searchState.label, radiusMeters: radius, pov, time: v });
     }
   };
   const handleRadiusChange = (v: number) => {
     setRadius(v);
     if (searchState) {
       setSearchState((s) => s ? { ...s, radiusMeters: v } : s);
-      search({ lat: searchState.lat, lng: searchState.lng, radiusMeters: v, pov, time });
+      search({ lat: searchState.lat, lng: searchState.lng, label: searchState.label, radiusMeters: v, pov, time });
     }
   };
 
