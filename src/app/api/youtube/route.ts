@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import type { PovType, TimeOfDay, VideoResult } from '@/lib/types';
 import { POV_OPTIONS, TIME_OPTIONS } from '@/lib/types';
 
@@ -12,57 +12,70 @@ function inferPov(title: string, description: string): PovType {
   if (/walking|walk through|jalan-jalan|pedestrian|street walk|berjalan/.test(text)) return 'walking';
   if (/krl|commuter line|kereta/.test(text)) return 'train';
   if (/\bmrt\b|lrt jakarta|metro|subway/.test(text)) return 'mrt';
-  return 'walking'; // default to walking rather than 'all'
+  return 'walking';
 }
 
 /**
- * Extract 1–3 meaningful place-name tokens from a Google geocoder label.
- * e.g. "Jl. Sudirman No.1, Senayan, Kby. Baru, Jakarta Selatan, DKI Jakarta, Indonesia"
- *   → "Senayan Jakarta Selatan"
+ * Extract 2-3 meaningful place-name tokens from a Google geocoder label.
+ * e.g. "Jl. Sawo No.26, RT.4/RW.2, Gondangdia, Kec. Menteng, Kota Jakarta Pusat, ..."
+ *   -> "Gondangdia Kec. Menteng Jakarta Pusat"
  *
- * Strategy: skip street-level part (first segment, usually starts with "Jl."/"No."),
- * grab next 2 segments that aren't "Indonesia" or a postal code.
+ * Fixes:
+ *  - Skip RT/RW codes (RT.4/RW.2 etc.) — meaningless to YouTube
+ *  - Skip segments containing embedded postal codes
+ *  - Skip province-level segments (Daerah Khusus Ibukota...)
+ *  - Strip "Kota " prefix so "Kota Jakarta Pusat" -> "Jakarta Pusat"
+ *  - Take up to 3 parts so the city name is included
  */
 function extractAreaName(label: string): string {
-  const parts = label
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 1);
+  if (!label) return 'Jakarta';
 
-  const skip = new Set(['indonesia', 'dki jakarta', 'jawa barat', 'jawa tengah', 'jawa timur', 'banten']);
-  const postalRe = /^\d{5}$/;
+  const parts = label.split(',').map((s) => s.trim()).filter((s) => s.length > 1);
 
-  const meaningful = parts.filter((p) => {
-    const low = p.toLowerCase();
-    return !skip.has(low) && !postalRe.test(p) && p.length < 50;
-  });
+  const SKIP_EXACT = new Set([
+    'indonesia', 'dki jakarta', 'jawa barat', 'jawa tengah', 'jawa timur',
+    'banten', 'bali', 'sumatera utara', 'sulawesi selatan',
+  ]);
+  const STANDALONE_POSTAL = /^\d{5}$/;
+  const RT_RW = /^rt\.?\s*\d+\s*\/\s*rw\.?\s*\d+/i;
+  const EMBEDDED_POSTAL = /\b\d{5}\b/;
+  const PROVINCE_PREFIX = /^(daerah|provinsi|prov\.|d\.i\.)/i;
+  const STREET_PREFIX = /^(jl\.|jalan\s|no\.|gang\s|gg\.)/i;
 
-  // Skip the very first segment if it looks like a street address
-  const start = meaningful[0]?.match(/^(Jl\.|Jalan|No\.|Gang|Gg\.)/i) ? 1 : 0;
-  return meaningful.slice(start, start + 2).join(' ');
+  const meaningful = parts
+    .filter((p) => {
+      const low = p.toLowerCase();
+      return (
+        !SKIP_EXACT.has(low) &&
+        !STANDALONE_POSTAL.test(p) &&
+        !RT_RW.test(p) &&
+        !EMBEDDED_POSTAL.test(p) &&
+        !PROVINCE_PREFIX.test(p) &&
+        p.length < 60
+      );
+    })
+    // Strip "Kota " prefix -> "Kota Jakarta Pusat" becomes "Jakarta Pusat"
+    .map((p) => p.replace(/^kota\s+/i, '').trim());
+
+  // Skip leading street segment
+  const start = meaningful[0] && STREET_PREFIX.test(meaningful[0]) ? 1 : 0;
+
+  // Take neighbourhood + district + city (up to 3 parts)
+  const selected = meaningful.slice(start, start + 3);
+  return selected.join(' ') || 'Jakarta';
 }
 
 /**
- * Build a tight YouTube search query that explicitly targets POV street footage.
- *
- * Core insight: YouTube's location param only works if the uploader tagged GPS coords —
- * almost nobody does. Instead we use the geocoded place name + strong POV signal words
- * so results are actually footage of that neighbourhood.
+ * Build a tight YouTube search query targeting POV street footage.
  */
 function buildQuery(
   areaName: string,
   povOption: (typeof POV_OPTIONS)[0],
   timeOption: (typeof TIME_OPTIONS)[0]
 ): string {
-  // Primary POV signal — pick the most distinctive term for this type
-  const povSignal = povOption.id === 'all'
-    ? 'POV street walking tour OR dashcam'
-    : povOption.searchTerms[0];
-
-  // Time signal (optional)
+  const povSignal =
+    povOption.id === 'all' ? 'POV street walking tour OR dashcam' : povOption.searchTerms[0];
   const timePart = timeOption.searchTerms[0] ?? '';
-
-  // Assemble: area name first (most important), then POV, then time
   const parts = [areaName, povSignal, timePart].filter(Boolean);
   return parts.join(' ');
 }
@@ -72,7 +85,7 @@ export async function GET(req: NextRequest) {
 
   const lat = searchParams.get('lat');
   const lng = searchParams.get('lng');
-  const label = searchParams.get('label') ?? ''; // reverse-geocoded address
+  const label = searchParams.get('label') ?? '';
   const pov = (searchParams.get('pov') ?? 'all') as PovType;
   const time = (searchParams.get('time') ?? 'all') as TimeOfDay;
 
@@ -88,8 +101,7 @@ export async function GET(req: NextRequest) {
   const povOption = POV_OPTIONS.find((p) => p.id === pov) ?? POV_OPTIONS[0];
   const timeOption = TIME_OPTIONS.find((t) => t.id === time) ?? TIME_OPTIONS[0];
 
-  // Use the place name to build a meaningful query — much more reliable than GPS metadata
-  const areaName = label ? extractAreaName(label) : 'Jakarta';
+  const areaName = extractAreaName(label);
   const query = buildQuery(areaName, povOption, timeOption);
 
   console.log('[youtube] query:', query, '| label:', label);
@@ -101,8 +113,8 @@ export async function GET(req: NextRequest) {
     maxResults: '20',
     order: 'relevance',
     videoEmbeddable: 'true',
-    videoDuration: 'medium', // 4–20 min — skips Shorts and hour-long uploads
-    relevanceLanguage: 'id', // Indonesian results preferred
+    videoDuration: 'any',
+    relevanceLanguage: 'id',
     key: apiKey,
   });
 
@@ -118,8 +130,9 @@ export async function GET(req: NextRequest) {
 
     const searchData = await searchRes.json();
 
-    // Filter out obvious non-POV content (food reviews, music, tutorials, etc.)
-    const POV_MUST_MATCH = /pov|walking|walk|dashcam|drive|driving|motorbike|motorcycle|ojek|scooter|krl|mrt|lrt|jalan-jalan|tour|street|riding|naik|berkendara|first.?person/i;
+    // Filter for POV/street content
+    const POV_MUST_MATCH =
+      /pov|walking|walk|dashcam|drive|driving|motorbike|motorcycle|ojek|scooter|krl|mrt|lrt|jalan-jalan|tour|street|riding|naik|berkendara|first.?person/i;
 
     const items: VideoResult[] = (searchData.items ?? [])
       .filter((item: any) => {
@@ -140,21 +153,22 @@ export async function GET(req: NextRequest) {
         povType: inferPov(item.snippet.title, item.snippet.description ?? ''),
       }));
 
-    // If the strict filter removed everything, fall back to unfiltered results
-    const fallback = items.length === 0
-      ? (searchData.items ?? []).map((item: any) => ({
-          id: item.id.videoId,
-          title: item.snippet.title,
-          channelTitle: item.snippet.channelTitle,
-          publishedAt: item.snippet.publishedAt,
-          thumbnail:
-            item.snippet.thumbnails?.medium?.url ??
-            item.snippet.thumbnails?.default?.url ??
-            '',
-          description: item.snippet.description ?? '',
-          povType: inferPov(item.snippet.title, item.snippet.description ?? ''),
-        }))
-      : items;
+    // Fall back to unfiltered if strict filter removed everything
+    const fallback =
+      items.length === 0
+        ? (searchData.items ?? []).map((item: any) => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            channelTitle: item.snippet.channelTitle,
+            publishedAt: item.snippet.publishedAt,
+            thumbnail:
+              item.snippet.thumbnails?.medium?.url ??
+              item.snippet.thumbnails?.default?.url ??
+              '',
+            description: item.snippet.description ?? '',
+            povType: inferPov(item.snippet.title, item.snippet.description ?? ''),
+          }))
+        : items;
 
     return NextResponse.json({ items: fallback, totalResults: fallback.length });
   } catch (e) {
